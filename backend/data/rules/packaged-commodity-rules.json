@@ -1,0 +1,79 @@
+[
+  {
+    "id": "RULE_001",
+    "name": "Net Quantity Check",
+    "category": "general",
+    "field": "net_quantity",
+    "condition": "required",
+    "severity": "high",
+    "description": "Net quantity declaration should be present.",
+    "reference": "Legal Metrology (Packaged Commodities) Rules — quantity declaration",
+    "recommendation": "Confirm numeric quantity and unit on the principal display panel."
+  },
+  {
+    "id": "RULE_002",
+    "name": "MRP Declaration",
+    "category": "general",
+    "field": "mrp",
+    "condition": "required",
+    "severity": "high",
+    "description": "Maximum retail price should be declared on the package.",
+    "reference": "Packaged Commodities Rules — price declaration",
+    "recommendation": "Verify MRP, tax-inclusive wording, and currency."
+  },
+  {
+    "id": "RULE_003",
+    "name": "Manufacturer / Packer Identity",
+    "category": "general",
+    "field": "manufacturer",
+    "condition": "required",
+    "severity": "high",
+    "description": "Manufacturer, packer, or importer name should be identifiable.",
+    "reference": "Packaged Commodities Rules — name of manufacturer/packer/importer",
+    "recommendation": "Inspect all package faces for identity declarations."
+  },
+  {
+    "id": "RULE_004",
+    "name": "Manufacturer / Packer Address",
+    "category": "general",
+    "field": "address",
+    "condition": "required",
+    "severity": "high",
+    "description": "Address of manufacturer, packer, or importer should be present.",
+    "reference": "Packaged Commodities Rules — address declaration",
+    "recommendation": "Capture a higher-resolution image of the address block if missing."
+  },
+  {
+    "id": "RULE_005",
+    "name": "Date of Manufacture / Packing",
+    "category": "general",
+    "field": "mfg_date",
+    "condition": "required",
+    "severity": "medium",
+    "description": "Manufacturing or packing date should be declared.",
+    "reference": "Packaged Commodities Rules — month and year of manufacture/packing",
+    "recommendation": "Look for MFG, PKD, or packed-on markings."
+  },
+  {
+    "id": "RULE_006",
+    "name": "Consumer Care Details",
+    "category": "general",
+    "field": "customer_care",
+    "condition": "required",
+    "severity": "medium",
+    "description": "Consumer care contact details should be available on the package.",
+    "reference": "Packaged Commodities Rules — consumer care details",
+    "recommendation": "Search for phone, email, or consumer care wording."
+  },
+  {
+    "id": "RULE_007",
+    "name": "Country of Origin",
+    "category": "imported",
+    "field": "country_of_origin",
+    "condition": "recommended",
+    "severity": "medium",
+    "description": "Country of origin should be declared where applicable.",
+    "reference": "Packaged Commodities Rules — country of origin",
+    "recommendation": "Confirm origin marking for imported commodities."
+  }
+]
