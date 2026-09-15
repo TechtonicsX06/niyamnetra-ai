@@ -22,7 +22,7 @@ export default function UploadSummary({ images, canContinueToOcr }) {
       </p>
       <p className="mt-1 text-xs text-ink-400">
         {canContinueToOcr
-          ? 'Ready for OCR. Original files are kept in this session for Phase 3.'
+          ? 'Ready for OCR. Original files will be sent to Tesseract.js for text extraction.'
           : 'Continue to OCR unlocks when at least one image is valid and none are still processing.'}
       </p>
     </div>

@@ -8,6 +8,7 @@ function revokePreview(item) {
 
 export function ScanProvider({ children }) {
   const [pendingImages, setPendingImagesState] = useState([])
+  const [ocrResults, setOcrResults] = useState([])
   const [notes, setNotes] = useState('')
 
   const setPendingImages = useCallback((next) => {
@@ -29,6 +30,7 @@ export function ScanProvider({ children }) {
       prev.forEach(revokePreview)
       return []
     })
+    setOcrResults([])
     setNotes('')
   }, [])
 
@@ -36,11 +38,13 @@ export function ScanProvider({ children }) {
     () => ({
       pendingImages,
       setPendingImages,
+      ocrResults,
+      setOcrResults,
       notes,
       setNotes,
       clearSession,
     }),
-    [pendingImages, setPendingImages, notes, clearSession]
+    [pendingImages, setPendingImages, ocrResults, notes, clearSession]
   )
 
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>

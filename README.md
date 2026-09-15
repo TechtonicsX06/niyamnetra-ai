@@ -6,17 +6,18 @@ Scan. Extract. Validate. Review.
 
 NIYAMNETRA AI is a decision-support prototype for **preliminary compliance screening** of packaged commodities from packaging images. It does **not** make legal or enforcement determinations. Authorized personnel remain responsible for final verification.
 
-## Current status — Phase 1
+## Current status — Phase 3
 
 Professional React + Vite + Tailwind frontend with:
 
 - Landing page
 - Dashboard (demo analytics + recent scans)
-- New Scan (multi-image upload, quality warning UI)
-- Processing pipeline UI
-- Results + report preview (mock data)
+- New Scan (multi-image upload, real validation, quality warning UI)
+- Client-side OCR via Tesseract.js (raw text + confidence per image)
+- Processing pipeline UI (real OCR for uploads; demo fake pipeline for presentation)
+- Results + report preview (mock data for Demo Mode)
 
-OCR, Gemini, and the Express API are **not** wired yet.
+Gemini / LLM extraction, Legal Metrology rules, and the Express API are **not** wired yet.
 
 ## Run locally
 

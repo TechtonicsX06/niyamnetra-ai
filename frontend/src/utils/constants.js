@@ -75,3 +75,15 @@ export const IMAGE_ERROR_MESSAGE = {
   CORRUPTED: 'This image is corrupted or invalid.',
   UNREADABLE: 'This image could not be read.',
 }
+
+/** Phase 3 OCR */
+export const OCR_STATUS = {
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+}
+
+export const OCR_ERROR_MESSAGE = {
+  MISSING_FILE: 'No image file available for OCR.',
+  RECOGNITION_FAILED: 'OCR could not extract text from this image.',
+  WORKER_FAILED: 'OCR engine failed to start.',
+}

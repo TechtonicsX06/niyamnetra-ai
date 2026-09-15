@@ -33,8 +33,8 @@ export default function NewScanPage() {
         <p className="section-kicker">Case intake</p>
         <h1 className="mt-1 font-display text-4xl text-navy-900">New screening scan</h1>
         <p className="mt-2 max-w-2xl text-sm text-ink-600">
-          Upload real packaging images. Files are validated for type, size, and readability before they can proceed to
-          OCR. Supported formats: JPG, JPEG, PNG, and WEBP (max 10 MB each).
+          Upload real packaging images. Files are validated for type, size, and readability, then processed with
+          client-side OCR (Tesseract.js). Supported formats: JPG, JPEG, PNG, and WEBP (max 10 MB each).
         </p>
       </div>
 
