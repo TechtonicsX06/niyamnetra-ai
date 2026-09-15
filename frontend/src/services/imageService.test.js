@@ -44,11 +44,15 @@ describe('validateImageFile', () => {
 
     const doc = await validateImageFile(fileFromBytes('notes.doc', 'application/msword', DOC_BYTES), {
       decodeImage: okDecode,
+
     })
     expect(doc.errorCode).toBe(IMAGE_ERROR.UNSUPPORTED_TYPE)
   })
 
   it('rejects files over 10 MB', async () => {
+    okDecode.mockClear()
+
+
     expect(MAX_IMAGE_BYTES).toBe(10 * 1024 * 1024)
     const file = fileFromBytes('huge.jpg', 'image/jpeg', JPEG_BYTES)
     Object.defineProperty(file, 'size', { value: MAX_IMAGE_BYTES + 1 })
