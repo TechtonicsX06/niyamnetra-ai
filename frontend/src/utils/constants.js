@@ -87,3 +87,11 @@ export const OCR_ERROR_MESSAGE = {
   RECOGNITION_FAILED: 'OCR could not extract text from this image.',
   WORKER_FAILED: 'OCR engine failed to start.',
 }
+
+/** Image-resolution band for OCR quality UI (not a guarantee of accuracy). */
+export function ocrImageQualityLabel(band) {
+  if (band === 'good') return 'Good source resolution'
+  if (band === 'fair') return 'Fair source resolution'
+  if (band === 'challenging') return 'Challenging source resolution'
+  return 'Source resolution unknown'
+}

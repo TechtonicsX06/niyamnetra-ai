@@ -1,28 +1,95 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OCR_ERROR_MESSAGE, OCR_STATUS } from '../utils/constants.js'
-import { recognizeImage, recognizeImages } from './ocrService.js'
+import { VARIANT_ID } from './ocrPreprocessService.js'
+import {
+  OCR_PSM,
+  recognizeImage,
+  recognizeImages,
+  scoreOcrCandidate,
+  selectBestOcrCandidate,
+} from './ocrService.js'
 
 function mockWorker(recognizeImpl) {
   return {
     recognize: vi.fn(recognizeImpl),
+    setParameters: vi.fn(async () => {}),
     terminate: vi.fn(async () => {}),
   }
 }
 
+function mockPrepared(overrides = {}) {
+  return {
+    originalDimensions: { width: 720, height: 1280 },
+    processedDimensions: { width: 2160, height: 3840 },
+    upscaleFactor: 3,
+    variants: [
+      {
+        id: VARIANT_ID.ENLARGED,
+        blob: new Blob([new Uint8Array([1])], { type: 'image/png' }),
+        width: 2160,
+        height: 3840,
+        steps: ['upscale_3x'],
+      },
+      {
+        id: VARIANT_ID.ENHANCED,
+        blob: new Blob([new Uint8Array([2])], { type: 'image/png' }),
+        width: 2160,
+        height: 3840,
+        steps: ['upscale_3x', 'grayscale', 'contrast', 'sharpen'],
+      },
+      {
+        id: VARIANT_ID.THRESHOLD,
+        blob: new Blob([new Uint8Array([3])], { type: 'image/png' }),
+        width: 2160,
+        height: 3840,
+        steps: ['upscale_3x', 'grayscale', 'otsu_threshold'],
+      },
+    ],
+    ...overrides,
+  }
+}
+
+describe('scoreOcrCandidate / selectBestOcrCandidate', () => {
+  it('prefers higher confidence with useful packaging text', () => {
+    const weak = scoreOcrCandidate({ text: 'ab', confidence: 0.95 })
+    const strong = scoreOcrCandidate({
+      text: 'MRP Rs 50\nNet Qty 200 g\nBest before 12/2026',
+      confidence: 0.72,
+    })
+    expect(strong).toBeGreaterThan(weak)
+  })
+
+  it('selects the best candidate deterministically', () => {
+    const best = selectBestOcrCandidate([
+      { rawText: 'xx', confidence: 0.9, variantId: 'enlarged' },
+      {
+        rawText: 'Net Quantity 500 ml MRP 120',
+        confidence: 0.7,
+        variantId: 'enhanced',
+        psm: '6',
+      },
+      { rawText: '', confidence: 0.99, variantId: 'threshold' },
+    ])
+    expect(best.variantId).toBe('enhanced')
+    expect(best.rawText).toContain('Net Quantity')
+  })
+})
+
 describe('recognizeImage', () => {
-  it('returns SUCCESS with normalized confidence and preserved metadata', async () => {
+  it('returns SUCCESS with quality metadata and preserved fields', async () => {
     const file = new File([new Uint8Array([1, 2, 3])], 'front.jpg', { type: 'image/jpeg' })
     const worker = mockWorker(async () => ({
       data: { text: '  MRP Rs 50\nNet Qty 200g  ', confidence: 88 },
     }))
     const createWorker = vi.fn(async () => worker)
+    const buildVariants = vi.fn(async () => mockPrepared())
 
     const result = await recognizeImage(
       { id: 'img-1', file, filename: 'front.jpg', label: 'Front' },
-      { createWorker }
+      { createWorker, buildVariants }
     )
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       id: 'img-1',
       filename: 'front.jpg',
       label: 'Front',
@@ -31,8 +98,97 @@ describe('recognizeImage', () => {
       status: OCR_STATUS.SUCCESS,
       error: null,
     })
-    expect(worker.recognize).toHaveBeenCalledWith(file)
+    expect(result.ocrQuality).toMatchObject({
+      originalDimensions: { width: 720, height: 1280 },
+      processedDimensions: { width: 2160, height: 3840 },
+      preprocessingVariants: expect.arrayContaining([
+        VARIANT_ID.ENLARGED,
+        VARIANT_ID.ENHANCED,
+        VARIANT_ID.THRESHOLD,
+      ]),
+      bestVariant: expect.any(String),
+      confidence: 0.88,
+    })
+    expect(worker.setParameters).toHaveBeenCalled()
+    expect(worker.recognize.mock.calls.length).toBeGreaterThanOrEqual(3)
     expect(worker.terminate).toHaveBeenCalled()
+    expect(file.size).toBe(3)
+  })
+
+  it('picks the strongest variant when results differ', async () => {
+    const file = new File([new Uint8Array([1])], 'label.jpg', { type: 'image/jpeg' })
+    let call = 0
+    const worker = mockWorker(async () => {
+      call += 1
+      if (call === 1) return { data: { text: '@@@', confidence: 40 } }
+      if (call === 2) {
+        return { data: { text: 'Net Qty 200g MRP Rs.99', confidence: 70 } }
+      }
+      if (call === 3) return { data: { text: 'Net Qty 200g MRP Rs.99 Extra', confidence: 60 } }
+      return { data: { text: 'noise', confidence: 30 } }
+    })
+
+    const result = await recognizeImage(
+      { id: 'img-best', file, filename: 'label.jpg', label: 'Back' },
+      {
+        createWorker: async () => worker,
+        buildVariants: async () => mockPrepared(),
+      }
+    )
+
+    expect(result.status).toBe(OCR_STATUS.SUCCESS)
+    expect(result.rawText).toContain('Net Qty')
+    expect(result.ocrQuality.bestVariant).toBeTruthy()
+    expect([VARIANT_ID.ENHANCED, VARIANT_ID.ENLARGED, VARIANT_ID.THRESHOLD]).toContain(
+      result.ocrQuality.bestVariant
+    )
+  })
+
+  it('continues when one OCR variant throws', async () => {
+    const file = new File([new Uint8Array([1])], 'side.png', { type: 'image/png' })
+    let call = 0
+    const worker = mockWorker(async () => {
+      call += 1
+      if (call === 1) throw new Error('variant boom')
+      return { data: { text: 'Ingredients Water Sugar 10g', confidence: 75 } }
+    })
+
+    const result = await recognizeImage(
+      { id: 'img-3', file, name: 'side.png', label: 'Side' },
+      {
+        createWorker: async () => worker,
+        buildVariants: async () => mockPrepared(),
+      }
+    )
+
+    expect(result.status).toBe(OCR_STATUS.SUCCESS)
+    expect(result.rawText).toContain('Ingredients')
+    expect(result.filename).toBe('side.png')
+  })
+
+  it('falls back to the original file when preprocessing fails', async () => {
+    const file = new File([new Uint8Array([9])], 'fallback.jpg', { type: 'image/jpeg' })
+    const worker = mockWorker(async (source) => {
+      expect(source).toBe(file)
+      return { data: { text: 'FALLBACK TEXT 12g', confidence: 80 } }
+    })
+
+    const result = await recognizeImage(
+      { id: 'fb', file, filename: 'fallback.jpg', label: 'Other' },
+      {
+        createWorker: async () => worker,
+        buildVariants: async () => {
+          throw new Error('canvas unavailable')
+        },
+      }
+    )
+
+    expect(result.status).toBe(OCR_STATUS.SUCCESS)
+    expect(result.rawText).toBe('FALLBACK TEXT 12g')
+    expect(result.ocrQuality.bestVariant).toBe('original')
+    expect(worker.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ tessedit_pageseg_mode: OCR_PSM.SINGLE_BLOCK })
+    )
   })
 
   it('returns FAILED when file is missing', async () => {
@@ -47,25 +203,46 @@ describe('recognizeImage', () => {
     expect(result.rawText).toBe('')
     expect(result.confidence).toBe(0)
     expect(result.label).toBe('Back')
+    expect(result.ocrQuality).toBeTruthy()
     expect(createWorker).not.toHaveBeenCalled()
   })
 
-  it('returns FAILED when recognize throws without crashing', async () => {
-    const file = new File([new Uint8Array([1])], 'side.png', { type: 'image/png' })
+  it('returns FAILED when all recognition attempts throw', async () => {
+    const file = new File([new Uint8Array([1])], 'bad.png', { type: 'image/png' })
     const worker = mockWorker(async () => {
       throw new Error('engine crashed')
     })
-    const createWorker = vi.fn(async () => worker)
 
     const result = await recognizeImage(
-      { id: 'img-3', file, name: 'side.png', label: 'Side' },
-      { createWorker }
+      { id: 'img-crash', file, filename: 'bad.png', label: 'Side' },
+      {
+        createWorker: async () => worker,
+        buildVariants: async () => mockPrepared(),
+      }
     )
 
     expect(result.status).toBe(OCR_STATUS.FAILED)
     expect(result.error).toBe('engine crashed')
-    expect(result.filename).toBe('side.png')
     expect(worker.terminate).toHaveBeenCalled()
+  })
+
+  it('uses PSM 6 and PSM 11 across the variant plan', async () => {
+    const file = new File([new Uint8Array([1])], 'psm.jpg', { type: 'image/jpeg' })
+    const worker = mockWorker(async () => ({
+      data: { text: 'Label text 100 ml', confidence: 70 },
+    }))
+
+    await recognizeImage(
+      { id: 'psm', file, filename: 'psm.jpg', label: 'Front' },
+      {
+        createWorker: async () => worker,
+        buildVariants: async () => mockPrepared(),
+      }
+    )
+
+    const psms = worker.setParameters.mock.calls.map((c) => c[0].tessedit_pageseg_mode)
+    expect(psms).toContain(OCR_PSM.SINGLE_BLOCK)
+    expect(psms).toContain(OCR_PSM.SPARSE_TEXT)
   })
 })
 
@@ -78,20 +255,29 @@ describe('recognizeImages', () => {
 
   it('processes multiple images and preserves labels', async () => {
     const files = [
-      { id: 'a', file: new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' }), filename: 'a.jpg', label: 'Front' },
-      { id: 'b', file: new File([new Uint8Array([2])], 'b.jpg', { type: 'image/jpeg' }), filename: 'b.jpg', label: 'Back' },
+      {
+        id: 'a',
+        file: new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' }),
+        filename: 'a.jpg',
+        label: 'Front',
+      },
+      {
+        id: 'b',
+        file: new File([new Uint8Array([2])], 'b.jpg', { type: 'image/jpeg' }),
+        filename: 'b.jpg',
+        label: 'Back',
+      },
     ]
 
-    const worker = mockWorker(async (file) => ({
-      data: {
-        text: file.name === 'a.jpg' ? 'FRONT TEXT' : 'BACK TEXT',
-        confidence: file.name === 'a.jpg' ? 90 : 70,
-      },
+    const worker = mockWorker(async () => ({
+      data: { text: 'SHARED TEXT 10g', confidence: 80 },
     }))
     const createWorker = vi.fn(async () => worker)
+    const buildVariants = vi.fn(async () => mockPrepared())
 
     const results = await recognizeImages(files, {
       createWorker,
+      buildVariants,
       onProgress: (event) => progressEvents.push(event),
     })
 
@@ -100,19 +286,14 @@ describe('recognizeImages', () => {
       id: 'a',
       label: 'Front',
       filename: 'a.jpg',
-      rawText: 'FRONT TEXT',
-      confidence: 0.9,
       status: OCR_STATUS.SUCCESS,
     })
     expect(results[1]).toMatchObject({
       id: 'b',
       label: 'Back',
       filename: 'b.jpg',
-      rawText: 'BACK TEXT',
-      confidence: 0.7,
       status: OCR_STATUS.SUCCESS,
     })
-    expect(worker.recognize).toHaveBeenCalledTimes(2)
     expect(worker.terminate).toHaveBeenCalledTimes(1)
     expect(progressEvents.length).toBeGreaterThan(0)
     expect(progressEvents.some((e) => e.label === 'Front')).toBe(true)
@@ -121,17 +302,29 @@ describe('recognizeImages', () => {
 
   it('continues the batch when one image fails', async () => {
     const items = [
-      { id: 'ok', file: new File([new Uint8Array([1])], 'ok.jpg', { type: 'image/jpeg' }), filename: 'ok.jpg', label: 'Front' },
+      {
+        id: 'ok',
+        file: new File([new Uint8Array([1])], 'ok.jpg', { type: 'image/jpeg' }),
+        filename: 'ok.jpg',
+        label: 'Front',
+      },
       { id: 'bad', filename: 'bad.jpg', label: 'Back' },
-      { id: 'ok2', file: new File([new Uint8Array([3])], 'ok2.jpg', { type: 'image/jpeg' }), filename: 'ok2.jpg', label: 'Side' },
+      {
+        id: 'ok2',
+        file: new File([new Uint8Array([3])], 'ok2.jpg', { type: 'image/jpeg' }),
+        filename: 'ok2.jpg',
+        label: 'Side',
+      },
     ]
 
-    const worker = mockWorker(async (file) => ({
-      data: { text: `text-${file.name}`, confidence: 80 },
+    const worker = mockWorker(async () => ({
+      data: { text: 'text ok 5g', confidence: 80 },
     }))
-    const createWorker = vi.fn(async () => worker)
 
-    const results = await recognizeImages(items, { createWorker })
+    const results = await recognizeImages(items, {
+      createWorker: async () => worker,
+      buildVariants: async () => mockPrepared(),
+    })
 
     expect(results).toHaveLength(3)
     expect(results[0].status).toBe(OCR_STATUS.SUCCESS)
@@ -149,8 +342,18 @@ describe('recognizeImages', () => {
 
     const results = await recognizeImages(
       [
-        { id: '1', file: new File([new Uint8Array([1])], '1.jpg', { type: 'image/jpeg' }), filename: '1.jpg', label: 'Front' },
-        { id: '2', file: new File([new Uint8Array([2])], '2.jpg', { type: 'image/jpeg' }), filename: '2.jpg', label: 'Other' },
+        {
+          id: '1',
+          file: new File([new Uint8Array([1])], '1.jpg', { type: 'image/jpeg' }),
+          filename: '1.jpg',
+          label: 'Front',
+        },
+        {
+          id: '2',
+          file: new File([new Uint8Array([2])], '2.jpg', { type: 'image/jpeg' }),
+          filename: '2.jpg',
+          label: 'Other',
+        },
       ],
       { createWorker }
     )

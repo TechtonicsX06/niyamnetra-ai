@@ -179,8 +179,9 @@ export default function ProcessingPage() {
       <p className="section-kicker">OCR</p>
       <h1 className="mt-1 font-display text-4xl text-navy-900">Extracting text from images</h1>
       <p className="mt-2 text-sm text-ink-600">
-        Running client-side OCR (Tesseract.js) on each uploaded packaging image. No declaration extraction or rule
-        checks yet.
+        Running client-side OCR (Tesseract.js) with light preprocessing variants on each uploaded packaging image. No
+        declaration extraction or rule checks yet. Preprocessing may help difficult labels but does not guarantee
+        accuracy.
       </p>
 
       {ocrError ? (
